@@ -1,4 +1,7 @@
-import { useState, useMemo } from "react";
+"use client";
+
+import { useState, useEffect, useMemo } from "react";
+import axios from "axios";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,7 +14,6 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Plus, Trash2, TreePine, MapPin, CalendarDays } from "lucide-react";
-import { usePastures, type Pasture, type PastureCondition, type RotationEntry } from "@/contexts/PastureContext";
 import { useToast } from "@/hooks/use-toast";
 
 const conditionColors: Record<string, string> = {
@@ -20,21 +22,45 @@ const conditionColors: Record<string, string> = {
   poor: "bg-red-100 text-red-800",
 };
 
+// ---------------- Pasture Dialog ----------------
 function PastureDialog({ open, onOpenChange, onSubmit }: {
   open: boolean; onOpenChange: (o: boolean) => void;
-  onSubmit: (data: Omit<Pasture, "id" | "farmId">) => void;
+  onSubmit: (formData: FormData) => Promise<void>;
 }) {
-  const [form, setForm] = useState({ name: "", sizeAcres: "", grassType: "", condition: "good" as PastureCondition, currentHerdCount: "0", isResting: false, notes: "" });
-  const handleSubmit = (e: React.FormEvent) => {
+  const [form, setForm] = useState({
+    name: "",
+    sizeAcres: "",
+    grassType: "",
+    condition: "good",
+    currentHerdCount: "0",
+    isResting: false,
+    notes: ""
+  });
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit({ name: form.name, sizeAcres: parseFloat(form.sizeAcres) || 0, grassType: form.grassType, condition: form.condition, currentHerdCount: parseInt(form.currentHerdCount) || 0, isResting: form.isResting, notes: form.notes });
+    const formData = new FormData();
+    formData.append("name", form.name);
+    formData.append("size_acres", form.sizeAcres);
+    formData.append("grass_type", form.grassType);
+    formData.append("condition", form.condition);
+    formData.append("current_herd_count", form.currentHerdCount);
+    formData.append("is_resting", form.isResting ? "1" : "0");
+    formData.append("notes", form.notes);
+
+    await onSubmit(formData);
+
     onOpenChange(false);
     setForm({ name: "", sizeAcres: "", grassType: "", condition: "good", currentHerdCount: "0", isResting: false, notes: "" });
   };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
-        <DialogHeader><DialogTitle>Add Pasture</DialogTitle><DialogDescription>Register a new pasture or paddock.</DialogDescription></DialogHeader>
+        <DialogHeader>
+          <DialogTitle>Add Pasture</DialogTitle>
+          <DialogDescription>Register a new pasture or paddock.</DialogDescription>
+        </DialogHeader>
         <form onSubmit={handleSubmit} className="grid gap-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2"><Label>Name *</Label><Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
@@ -43,9 +69,13 @@ function PastureDialog({ open, onOpenChange, onSubmit }: {
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2"><Label>Grass Type</Label><Input value={form.grassType} onChange={(e) => setForm({ ...form, grassType: e.target.value })} /></div>
             <div className="space-y-2"><Label>Condition</Label>
-              <Select value={form.condition} onValueChange={(v) => setForm({ ...form, condition: v as PastureCondition })}>
+              <Select value={form.condition} onValueChange={(v) => setForm({ ...form, condition: v })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent><SelectItem value="good">Good</SelectItem><SelectItem value="fair">Fair</SelectItem><SelectItem value="poor">Poor</SelectItem></SelectContent>
+                <SelectContent>
+                  <SelectItem value="good">Good</SelectItem>
+                  <SelectItem value="fair">Fair</SelectItem>
+                  <SelectItem value="poor">Poor</SelectItem>
+                </SelectContent>
               </Select>
             </div>
           </div>
@@ -54,59 +84,63 @@ function PastureDialog({ open, onOpenChange, onSubmit }: {
             <Label>Currently Resting</Label>
           </div>
           <div className="space-y-2"><Label>Notes</Label><Textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></div>
-          <DialogFooter><Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button><Button type="submit">Add Pasture</Button></DialogFooter>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+            <Button type="submit">Add Pasture</Button>
+          </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
   );
 }
 
-function RotationDialog({ open, onOpenChange, pastures, onSubmit }: {
-  open: boolean; onOpenChange: (o: boolean) => void;
-  pastures: Pasture[];
-  onSubmit: (data: Omit<RotationEntry, "id" | "farmId">) => void;
-}) {
-  const [form, setForm] = useState({ pastureId: "", startDate: "", endDate: "", herdGroup: "" });
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    onSubmit(form);
-    onOpenChange(false);
-    setForm({ pastureId: "", startDate: "", endDate: "", herdGroup: "" });
-  };
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader><DialogTitle>Add Rotation</DialogTitle><DialogDescription>Schedule a herd rotation to a pasture.</DialogDescription></DialogHeader>
-        <form onSubmit={handleSubmit} className="grid gap-4">
-          <div className="space-y-2"><Label>Pasture *</Label>
-            <Select value={form.pastureId} onValueChange={(v) => setForm({ ...form, pastureId: v })}>
-              <SelectTrigger><SelectValue placeholder="Select pasture" /></SelectTrigger>
-              <SelectContent>{pastures.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
-            </Select>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2"><Label>Start Date *</Label><Input type="date" required value={form.startDate} onChange={(e) => setForm({ ...form, startDate: e.target.value })} /></div>
-            <div className="space-y-2"><Label>End Date *</Label><Input type="date" required value={form.endDate} onChange={(e) => setForm({ ...form, endDate: e.target.value })} /></div>
-          </div>
-          <div className="space-y-2"><Label>Herd Group *</Label><Input required value={form.herdGroup} onChange={(e) => setForm({ ...form, herdGroup: e.target.value })} placeholder="e.g. Dairy Herd A" /></div>
-          <DialogFooter><Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button><Button type="submit">Add Rotation</Button></DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
+// ---------------- Main Component ----------------
 export default function Pastures() {
-  const { pastures, rotations, addPasture, deletePasture, addRotation, deleteRotation } = usePastures();
-  const { toast } = useToast();
+  const [pastures, setPastures] = useState<any[]>([]);
   const [pastureOpen, setPastureOpen] = useState(false);
-  const [rotationOpen, setRotationOpen] = useState(false);
+  const { toast } = useToast();
+
+  // ---------------- Fetch pastures from API ----------------
+  const fetchPastures = async () => {
+    try {
+      const res = await axios.get("http://dancan.alwaysdata.net/api/get_pasture");
+      setPastures(res.data);
+    } catch (err) {
+      console.error(err);
+      toast({ title: "Failed to fetch pastures", variant: "destructive" });
+    }
+  };
+
+  useEffect(() => { fetchPastures(); }, []);
+
+  // ---------------- Add pasture via API ----------------
+  const addPasture = async (formData: FormData) => {
+    try {
+      const res = await axios.post("http://dancan.alwaysdata.net/api/add_pasture", formData, { headers: { "Content-Type": "multipart/form-data" } });
+      setPastures((prev) => [...prev, res.data]); // assuming API returns created pasture with id
+      toast({ title: "Pasture added" });
+    } catch (err) {
+      console.error(err);
+      toast({ title: "Failed to add pasture", variant: "destructive" });
+    }
+  };
+
+  const deletePasture = async (id: string) => {
+    try {
+      await axios.delete(`http://dancan.alwaysdata.net/api/delete_pasture/${id}`);
+      setPastures((prev) => prev.filter((p) => p.id !== id));
+      toast({ title: "Pasture deleted" });
+    } catch (err) {
+      console.error(err);
+      toast({ title: "Failed to delete pasture", variant: "destructive" });
+    }
+  };
 
   const stats = useMemo(() => ({
     total: pastures.length,
-    totalAcres: pastures.reduce((s, p) => s + p.sizeAcres, 0),
-    resting: pastures.filter((p) => p.isResting).length,
-    poor: pastures.filter((p) => p.condition === "poor").length,
+    totalAcres: pastures.reduce((s, p) => s + (parseFloat(p.size) || 0), 0),
+    resting: pastures.filter((p) => p.status).length,
+    poor: pastures.filter((p) => p.pcondition === "poor").length,
   }), [pastures]);
 
   return (
@@ -116,10 +150,7 @@ export default function Pastures() {
           <h1 className="text-2xl font-bold text-foreground">Pasture Management</h1>
           <p className="text-sm text-muted-foreground">Manage pastures, rotation schedules, and utilization</p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setRotationOpen(true)}><CalendarDays className="h-4 w-4 mr-1" /> Add Rotation</Button>
-          <Button onClick={() => setPastureOpen(true)}><Plus className="h-4 w-4 mr-1" /> Add Pasture</Button>
-        </div>
+        <Button onClick={() => setPastureOpen(true)}><Plus className="h-4 w-4 mr-1" /> Add Pasture</Button>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -129,62 +160,32 @@ export default function Pastures() {
         <Card><CardContent className="pt-4 flex items-center gap-3"><div className="rounded-full bg-destructive/10 p-2"><TreePine className="h-5 w-5 text-destructive" /></div><div><p className="text-2xl font-bold">{stats.poor}</p><p className="text-xs text-muted-foreground">Poor Condition</p></div></CardContent></Card>
       </div>
 
-      <Tabs defaultValue="overview">
-        <TabsList><TabsTrigger value="overview">Pastures</TabsTrigger><TabsTrigger value="rotations">Rotation Schedule ({rotations.length})</TabsTrigger></TabsList>
+      {pastures.length === 0 ? (
+        <Card><CardContent className="p-8 text-center text-muted-foreground">No pastures registered yet. Add your first pasture.</CardContent></Card>
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {pastures.map((p) => (
+            <Card key={p.id}>
+              <CardHeader className="pb-2 flex flex-row items-start justify-between">
+                <div>
+                  <CardTitle className="text-base">{p.name}</CardTitle>
+                  <p className="text-xs text-muted-foreground">{p.size} acres · {p.grass_type || "Unknown grass"}</p>
+                </div>
+                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => deletePasture(p.id)}>
+                  <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                </Button>
+              </CardHeader>
+              <CardContent className="flex gap-2 flex-wrap">
+                <Badge className={conditionColors[p.pcondition] + " capitalize"}>{p.condition}</Badge>
+                {p.is_resting && <Badge variant="secondary">Resting</Badge>}
+                {p.current_herd_count > 0 && <Badge variant="outline">{p.current_herd_count} animals</Badge>}
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
 
-        <TabsContent value="overview">
-          {pastures.length === 0 ? (
-            <Card><CardContent className="p-8 text-center text-muted-foreground">No pastures registered yet. Add your first pasture.</CardContent></Card>
-          ) : (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {pastures.map((p) => (
-                <Card key={p.id}>
-                  <CardHeader className="pb-2 flex flex-row items-start justify-between">
-                    <div>
-                      <CardTitle className="text-base">{p.name}</CardTitle>
-                      <p className="text-xs text-muted-foreground">{p.sizeAcres} acres · {p.grassType || "Unknown grass"}</p>
-                    </div>
-                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { deletePasture(p.id); toast({ title: "Pasture deleted" }); }}>
-                      <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                    </Button>
-                  </CardHeader>
-                  <CardContent className="flex gap-2 flex-wrap">
-                    <Badge className={conditionColors[p.condition] + " capitalize"}>{p.condition}</Badge>
-                    {p.isResting && <Badge variant="secondary">Resting</Badge>}
-                    {p.currentHerdCount > 0 && <Badge variant="outline">{p.currentHerdCount} animals</Badge>}
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-        </TabsContent>
-
-        <TabsContent value="rotations">
-          <Card><CardContent className="p-0">
-            {rotations.length === 0 ? (
-              <div className="p-8 text-center text-muted-foreground">No rotations scheduled.</div>
-            ) : (
-              <Table>
-                <TableHeader><TableRow><TableHead>Pasture</TableHead><TableHead>Herd Group</TableHead><TableHead>Start</TableHead><TableHead>End</TableHead><TableHead className="w-10"></TableHead></TableRow></TableHeader>
-                <TableBody>
-                  {[...rotations].sort((a, b) => a.startDate.localeCompare(b.startDate)).map((r) => (
-                    <TableRow key={r.id}>
-                      <TableCell>{pastures.find((p) => p.id === r.pastureId)?.name || "—"}</TableCell>
-                      <TableCell>{r.herdGroup}</TableCell>
-                      <TableCell className="text-xs">{r.startDate}</TableCell>
-                      <TableCell className="text-xs">{r.endDate}</TableCell>
-                      <TableCell><Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { deleteRotation(r.id); toast({ title: "Rotation deleted" }); }}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button></TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </CardContent></Card>
-        </TabsContent>
-      </Tabs>
-
-      <PastureDialog open={pastureOpen} onOpenChange={setPastureOpen} onSubmit={(d) => { addPasture(d); toast({ title: "Pasture added" }); }} />
-      <RotationDialog open={rotationOpen} onOpenChange={setRotationOpen} pastures={pastures} onSubmit={(d) => { addRotation(d); toast({ title: "Rotation scheduled" }); }} />
+      <PastureDialog open={pastureOpen} onOpenChange={setPastureOpen} onSubmit={addPasture} />
     </div>
   );
 }
