@@ -182,7 +182,7 @@ export default function Finances() {
   // ---------------- Fetch all records ----------------
   const fetchRecords = async () => {
     try {
-      const res = await axios.get("http://dancan.alwaysdata.net/api/get_finance");
+      const res = await axios.get("https://dancan.alwaysdata.net/api/get_finance");
       setRecords(res.data);
     } catch (err) {
       console.error(err);
@@ -195,7 +195,7 @@ export default function Finances() {
   // ---------------- Add transaction ----------------
   const addTransaction = async (formData: FormData) => {
     try {
-      const res = await axios.post("http://dancan.alwaysdata.net/api/add_finance", formData, {
+      const res = await axios.post("https://dancan.alwaysdata.net/api/add_finance", formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
 
@@ -221,7 +221,7 @@ export default function Finances() {
   const deleteTransaction = async (id?: string) => {
     if (!id) return;
     try {
-      await axios.delete(`http://dancan.alwaysdata.net/api/finance/${id}`);
+      await axios.delete(`https://dancan.alwaysdata.net/api/finance/${id}`);
       setRecords((prev) => prev.filter((r) => r.id !== id));
       toast({ title: "Transaction deleted" });
     } catch (err) {
