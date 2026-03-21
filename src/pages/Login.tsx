@@ -21,17 +21,16 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-  const { login } = useAuth(); // ✅ Use login instead of setUser
+  const { login } = useAuth(); // ✅ Use login from AuthContext
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
     try {
-      await login(email, password); // ⚡ call context login which handles API, localStorage, etc.
-
+      await login(email, password); // ⚡ Call AuthContext login, handles API + localStorage
       toast.success("Login successful!");
-      navigate("/", { replace: true });
+      navigate("/", { replace: true }); // Redirect to dashboard
     } catch (err: any) {
       toast.error(err.message || "Login failed");
     } finally {
