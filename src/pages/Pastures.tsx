@@ -103,7 +103,7 @@ export default function Pastures() {
   // ---------------- Fetch pastures from API ----------------
   const fetchPastures = async () => {
     try {
-      const res = await axios.get("http://dancan.alwaysdata.net/api/get_pasture");
+      const res = await axios.get("https://dancan.alwaysdata.net/api/get_pasture");
       setPastures(res.data);
     } catch (err) {
       console.error(err);
@@ -116,7 +116,7 @@ export default function Pastures() {
   // ---------------- Add pasture via API ----------------
   const addPasture = async (formData: FormData) => {
     try {
-      const res = await axios.post("http://dancan.alwaysdata.net/api/add_pasture", formData, { headers: { "Content-Type": "multipart/form-data" } });
+      const res = await axios.post("https://dancan.alwaysdata.net/api/add_pasture", formData, { headers: { "Content-Type": "multipart/form-data" } });
       setPastures((prev) => [...prev, res.data]); // assuming API returns created pasture with id
       toast({ title: "Pasture added" });
     } catch (err) {
@@ -127,7 +127,7 @@ export default function Pastures() {
 
   const deletePasture = async (id: string) => {
     try {
-      await axios.delete(`http://dancan.alwaysdata.net/api/delete_pasture/${id}`);
+      await axios.delete(`https://dancan.alwaysdata.net/api/delete_pasture/${id}`);
       setPastures((prev) => prev.filter((p) => p.id !== id));
       toast({ title: "Pasture deleted" });
     } catch (err) {

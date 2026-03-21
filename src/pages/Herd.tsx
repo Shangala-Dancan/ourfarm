@@ -54,7 +54,7 @@ export default function Herd() {
     try {
       setLoading(true);
 
-      const res = await axios.get("http://dancan.alwaysdata.net/api/get_animal");
+      const res = await axios.get("https://dancan.alwaysdata.net/api/get_animal");
 
       const normalized: Animal[] = res.data.map((a: any) => ({
         ...a,
@@ -105,7 +105,7 @@ export default function Herd() {
   const handleDelete = async (animal: Animal) => {
     try {
       await axios.delete(
-        `http://dancan.alwaysdata.net/api/delete_animal/${animal.id}`
+        `https://dancan.alwaysdata.net/api/delete_animal/${animal.id}`
       );
 
       setAnimals((prev) => prev.filter((a) => a.id !== animal.id));

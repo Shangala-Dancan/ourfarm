@@ -52,7 +52,7 @@ function RecordDialog({ open, onOpenChange, refresh }: any) {
 
   // Fetch animals
   const fetchAnimals = async () => {
-    const res = await axios.get("http://127.0.0.1:5000/api/get_animal");
+    const res = await axios.get("https://dancan.alwaysdata.net/api/get_animal");
     const normalized = res.data.map((a: any) => ({
       ...a,
       id: String(a.id),
@@ -80,7 +80,7 @@ function RecordDialog({ open, onOpenChange, refresh }: any) {
     formData.append("yieldLiters", yieldLiters);
 
     try {
-      await axios.post("http://127.0.0.1:5000/api/add_milk", formData);
+      await axios.post("https://dancan.alwaysdata.net/api/add_milk", formData);
       toast({ title: "Milk record added", description: `${yieldLiters} L for selected animal.` });
       refresh();
       onOpenChange(false);
@@ -165,7 +165,7 @@ export default function MilkProduction() {
 
   // Fetch milk records
   const fetchMilk = async () => {
-    const res = await axios.get("http://dancan.alwaysdata.net/api/get_milk");
+    const res = await axios.get("https://dancan.alwaysdata.net/api/get_milk");
     const normalized = res.data.map((m: any) => ({
       ...m,
       id: String(m.id),
@@ -177,7 +177,7 @@ export default function MilkProduction() {
 
   // Fetch animals
   const fetchAnimals = async () => {
-    const res = await axios.get("http://dancan.alwaysdata.net/api/get_animal");
+    const res = await axios.get("https://dancan.alwaysdata.net/api/get_animal");
     const normalized = res.data.map((a: any) => ({
       ...a,
       id: String(a.id),
@@ -194,7 +194,7 @@ export default function MilkProduction() {
   // Delete record
   const handleDelete = async (id: string) => {
     try {
-      await axios.delete(`http://dancan.alwaysdata.net/api/delete_milk/${id}`);
+      await axios.delete(`https://dancan.alwaysdata.net/api/delete_milk/${id}`);
       setMilk((prev) => prev.filter((m) => m.id !== id));
       toast({ title: "Record deleted" });
     } catch (err) {

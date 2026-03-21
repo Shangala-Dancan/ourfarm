@@ -147,7 +147,7 @@ export default function Movements() {
   // ---------------- Fetch movements ----------------
   const fetchMovements = async () => {
     try {
-      const res = await axios.get("http://dancan.alwaysdata.net/api/get_move");
+      const res = await axios.get("https://dancan.alwaysdata.net/api/get_move");
       setMovements(res.data);
     } catch (err) {
       console.error(err);
@@ -172,7 +172,7 @@ export default function Movements() {
       formData.append("destination", form.destination || "");
       formData.append("notes", form.notes || "");
 
-      const res = await axios.post("http://dancan.alwaysdata.net/api/add_move", formData, {
+      const res = await axios.post("https://dancan.alwaysdata.net/api/add_move", formData, {
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
       });
 
@@ -188,7 +188,7 @@ export default function Movements() {
   // ---------------- Delete movement ----------------
   const deleteMovement = async (id: string) => {
     try {
-      await axios.delete(`http://dancan.alwaysdata.net/api/delete_move/${id}`);
+      await axios.delete(`https://dancan.alwaysdata.net/api/delete_move/${id}`);
       setMovements((prev) => prev.filter((m) => m.id !== id));
       toast({ title: "Movement deleted" });
     } catch (err) {

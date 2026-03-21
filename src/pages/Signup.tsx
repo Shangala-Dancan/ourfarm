@@ -35,7 +35,7 @@ export default function Signup() {
       formData.append("password",password)
       formData.append("role",role)
 
-      const response =await axios.post("http://dancan.alwaysdata.net/api/signup",formData)
+      const response =await axios.post("https://dancan.alwaysdata.net/api/signup",formData)
       setLoading(false)
 
       setSuccess(response.data.message)
