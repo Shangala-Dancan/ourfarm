@@ -1,13 +1,16 @@
+// src/contexts/AuthContext.tsx
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
+import axios from "axios";
 
 export type UserRole = "owner" | "manager" | "worker";
 
 export interface User {
-  id: string;
+  id: number | string;
   email: string;
-  name: string;
-  role: UserRole;
-  currentFarmId: string | null;
+  name?: string;
+  role?: UserRole;
+  token: string;
+  [key: string]: any;
 }
 
 export interface Farm {
@@ -26,32 +29,12 @@ interface AuthContextType {
   signup: (email: string, password: string, name: string, role: UserRole) => Promise<void>;
   logout: () => void;
   setCurrentFarm: (farmId: string) => void;
-  addFarm: (name: string, location: string) => Farm;
+  addFarm: (name: string, location: string) => Promise<Farm>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-const USERS_KEY = "lms_users";
-const SESSION_KEY = "lms_session";
-const FARMS_KEY = "lms_farms";
-const FARM_MEMBERS_KEY = "lms_farm_members";
-
-function getStored<T>(key: string, fallback: T): T {
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-function setStored<T>(key: string, value: T) {
-  localStorage.setItem(key, JSON.stringify(value));
-}
-
-function generateId() {
-  return crypto.randomUUID();
-}
+const FARMS_KEY = "lms_farms"; // optional caching for farms
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -59,91 +42,101 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const session = getStored<User | null>(SESSION_KEY, null);
-    if (session) {
-      setUser(session);
-      const allFarms = getStored<Farm[]>(FARMS_KEY, []);
-      const members = getStored<{ userId: string; farmId: string }[]>(FARM_MEMBERS_KEY, []);
-      const userFarmIds = members.filter((m) => m.userId === session.id).map((m) => m.farmId);
-      setFarms(allFarms.filter((f) => userFarmIds.includes(f.id)));
+    const storedUser = localStorage.getItem("user");
+    if (storedUser) {
+      setUser(JSON.parse(storedUser));
     }
     setIsLoading(false);
   }, []);
 
+  // ✅ Login using your external API
   const login = useCallback(async (email: string, password: string) => {
-    const users = getStored<(User & { password: string })[]>(USERS_KEY, []);
-    const found = users.find((u) => u.email === email && u.password === password);
-    if (!found) throw new Error("Invalid email or password");
-    const { password: _, ...userData } = found;
-    setUser(userData);
-    setStored(SESSION_KEY, userData);
+    try {
+      const formData = new FormData();
+      formData.append("email", email);
+      formData.append("password", password);
 
-    const allFarms = getStored<Farm[]>(FARMS_KEY, []);
-    const members = getStored<{ userId: string; farmId: string }[]>(FARM_MEMBERS_KEY, []);
-    const userFarmIds = members.filter((m) => m.userId === userData.id).map((m) => m.farmId);
-    setFarms(allFarms.filter((f) => userFarmIds.includes(f.id)));
+      const res = await axios.post("https://dancan.alwaysdata.net/api/signin", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+
+      const { user: apiUser, token } = res.data;
+
+      const loggedInUser: User = {
+        ...apiUser,
+        token,
+      };
+
+      setUser(loggedInUser);
+      localStorage.setItem("user", JSON.stringify(loggedInUser));
+      localStorage.setItem("token", token);
+
+      // Optionally fetch farms from your API if available
+      const farmsRes = await axios.get("https://dancan.alwaysdata.net/api/farms", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setFarms(farmsRes.data || []);
+      localStorage.setItem(FARMS_KEY, JSON.stringify(farmsRes.data || []));
+    } catch (err: any) {
+      throw new Error(err.response?.data?.message || err.message || "Login failed");
+    }
   }, []);
 
+  // ✅ Signup using your external API
   const signup = useCallback(async (email: string, password: string, name: string, role: UserRole) => {
-    const users = getStored<(User & { password: string })[]>(USERS_KEY, []);
-    if (users.some((u) => u.email === email)) throw new Error("Email already exists");
+    try {
+      const res = await axios.post("https://dancan.alwaysdata.net/api/signup", {
+        email,
+        password,
+        name,
+        role,
+      });
 
-    const id = generateId();
-    const newUser = { id, email, name, role, currentFarmId: null, password };
-    users.push(newUser);
-    setStored(USERS_KEY, users);
+      const { user: apiUser, token } = res.data;
 
-    if (role === "owner") {
-      const farm: Farm = { id: generateId(), name: `${name}'s Farm`, location: "", ownerId: id };
-      const allFarms = getStored<Farm[]>(FARMS_KEY, []);
-      allFarms.push(farm);
-      setStored(FARMS_KEY, allFarms);
+      const newUser: User = {
+        ...apiUser,
+        token,
+      };
 
-      const members = getStored<{ userId: string; farmId: string }[]>(FARM_MEMBERS_KEY, []);
-      members.push({ userId: id, farmId: farm.id });
-      setStored(FARM_MEMBERS_KEY, members);
-
-      const userData: User = { id, email, name, role, currentFarmId: farm.id };
-      setUser(userData);
-      setStored(SESSION_KEY, userData);
-      setFarms([farm]);
-    } else {
-      const userData: User = { id, email, name, role, currentFarmId: null };
-      setUser(userData);
-      setStored(SESSION_KEY, userData);
-      setFarms([]);
+      setUser(newUser);
+      localStorage.setItem("user", JSON.stringify(newUser));
+      localStorage.setItem("token", token);
+    } catch (err: any) {
+      throw new Error(err.response?.data?.message || err.message || "Signup failed");
     }
   }, []);
 
   const logout = useCallback(() => {
     setUser(null);
     setFarms([]);
-    localStorage.removeItem(SESSION_KEY);
+    localStorage.removeItem("user");
+    localStorage.removeItem("token");
+    localStorage.removeItem(FARMS_KEY);
   }, []);
 
   const setCurrentFarm = useCallback((farmId: string) => {
-    setUser((prev) => {
-      if (!prev) return prev;
-      const updated = { ...prev, currentFarmId: farmId };
-      setStored(SESSION_KEY, updated);
-      return updated;
-    });
-  }, []);
-
-  const addFarm = useCallback((name: string, location: string): Farm => {
-    if (!user) throw new Error("Not authenticated");
-    const farm: Farm = { id: generateId(), name, location, ownerId: user.id };
-    const allFarms = getStored<Farm[]>(FARMS_KEY, []);
-    allFarms.push(farm);
-    setStored(FARMS_KEY, allFarms);
-
-    const members = getStored<{ userId: string; farmId: string }[]>(FARM_MEMBERS_KEY, []);
-    members.push({ userId: user.id, farmId: farm.id });
-    setStored(FARM_MEMBERS_KEY, members);
-
-    setFarms((prev) => [...prev, farm]);
-    return farm;
+    if (!user) return;
+    const updated = { ...user, currentFarmId: farmId };
+    setUser(updated);
+    localStorage.setItem("user", JSON.stringify(updated));
   }, [user]);
+
+  const addFarm = useCallback(async (name: string, location: string): Promise<Farm> => {
+    if (!user) throw new Error("Not authenticated");
+    const token = user.token;
+
+    const res = await axios.post(
+      "https://dancan.alwaysdata.net/api/farms",
+      { name, location },
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+
+    const newFarm: Farm = res.data;
+    setFarms((prev) => [...prev, newFarm]);
+    localStorage.setItem(FARMS_KEY, JSON.stringify([...farms, newFarm]));
+    return newFarm;
+  }, [user, farms]);
 
   const currentFarm = farms.find((f) => f.id === user?.currentFarmId) || farms[0] || null;
 

@@ -1,6 +1,6 @@
+// src/pages/Login.tsx
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import axios from "axios";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,18 +21,17 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-  const { login } = useAuth(); // ⚡ Use login method, not setUser
+  const { login } = useAuth(); // ✅ Use login instead of setUser
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
     try {
-      // Call login from AuthContext
-      await login(email, password);
+      await login(email, password); // ⚡ call context login which handles API, localStorage, etc.
 
-      toast.success("Login successful");
-      navigate("/", { replace: true }); // redirect to dashboard
+      toast.success("Login successful!");
+      navigate("/", { replace: true });
     } catch (err: any) {
       toast.error(err.message || "Login failed");
     } finally {
@@ -56,8 +55,9 @@ export default function Login() {
         <form onSubmit={handleSubmit}>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label>Email</Label>
+              <Label htmlFor="email">Email</Label>
               <Input
+                id="email"
                 type="email"
                 placeholder="you@example.com"
                 value={email}
@@ -67,8 +67,9 @@ export default function Login() {
             </div>
 
             <div className="space-y-2">
-              <Label>Password</Label>
+              <Label htmlFor="password">Password</Label>
               <Input
+                id="password"
                 type="password"
                 placeholder="••••••••"
                 value={password}
