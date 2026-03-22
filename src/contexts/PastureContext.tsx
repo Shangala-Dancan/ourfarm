@@ -1,4 +1,7 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
+"use client";
+
+import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
+import axios from "axios";
 import { useAuth } from "./AuthContext";
 
 export type PastureCondition = "good" | "fair" | "poor";
@@ -12,71 +15,67 @@ export interface Pasture {
   condition: PastureCondition;
   currentHerdCount: number;
   isResting: boolean;
-  notes: string;
-}
-
-export interface RotationEntry {
-  id: string;
-  farmId: string;
-  pastureId: string;
-  startDate: string;
-  endDate: string;
-  herdGroup: string;
+  notes?: string;
 }
 
 interface PastureContextType {
   pastures: Pasture[];
-  rotations: RotationEntry[];
-  addPasture: (data: Omit<Pasture, "id" | "farmId">) => void;
-  updatePasture: (id: string, data: Partial<Omit<Pasture, "id" | "farmId">>) => void;
-  deletePasture: (id: string) => void;
-  addRotation: (data: Omit<RotationEntry, "id" | "farmId">) => void;
-  deleteRotation: (id: string) => void;
+  loading: boolean;
+  fetchPastures: () => Promise<void>;
+  addPasture: (formData: FormData) => Promise<void>;
+  deletePasture: (id: string) => Promise<void>;
 }
 
 const PastureContext = createContext<PastureContextType | null>(null);
-const PASTURES_KEY = "lms_pastures";
-const ROTATIONS_KEY = "lms_rotations";
-
-function getStored<T>(key: string, fb: T): T {
-  try { const r = localStorage.getItem(key); return r ? JSON.parse(r) : fb; } catch { return fb; }
-}
 
 export function PastureProvider({ children }: { children: React.ReactNode }) {
   const { currentFarm } = useAuth();
-  const farmId = currentFarm?.id || "";
-  const [allPastures, setAllPastures] = useState<Pasture[]>(() => getStored(PASTURES_KEY, []));
-  const [allRotations, setAllRotations] = useState<RotationEntry[]>(() => getStored(ROTATIONS_KEY, []));
+  const farmId = currentFarm?.id;
+  const [pastures, setPastures] = useState<Pasture[]>([]);
+  const [loading, setLoading] = useState(false);
 
-  useEffect(() => { localStorage.setItem(PASTURES_KEY, JSON.stringify(allPastures)); }, [allPastures]);
-  useEffect(() => { localStorage.setItem(ROTATIONS_KEY, JSON.stringify(allRotations)); }, [allRotations]);
-
-  const pastures = allPastures.filter((p) => p.farmId === farmId);
-  const rotations = allRotations.filter((r) => r.farmId === farmId);
-
-  const addPasture = useCallback((data: Omit<Pasture, "id" | "farmId">) => {
-    setAllPastures((prev) => [...prev, { ...data, id: crypto.randomUUID(), farmId }]);
+  const fetchPastures = useCallback(async () => {
+    if (!farmId) return;
+    setLoading(true);
+    try {
+      const res = await axios.get("https://dancan.alwaysdata.net/api/get_pasture", { params: { farmId } });
+      setPastures(res.data);
+    } catch (err) {
+      console.error("Failed to fetch pastures", err);
+    } finally {
+      setLoading(false);
+    }
   }, [farmId]);
 
-  const updatePasture = useCallback((id: string, data: Partial<Omit<Pasture, "id" | "farmId">>) => {
-    setAllPastures((prev) => prev.map((p) => (p.id === id ? { ...p, ...data } : p)));
-  }, []);
-
-  const deletePasture = useCallback((id: string) => {
-    setAllPastures((prev) => prev.filter((p) => p.id !== id));
-    setAllRotations((prev) => prev.filter((r) => r.pastureId !== id));
-  }, []);
-
-  const addRotation = useCallback((data: Omit<RotationEntry, "id" | "farmId">) => {
-    setAllRotations((prev) => [...prev, { ...data, id: crypto.randomUUID(), farmId }]);
+  const addPasture = useCallback(async (formData: FormData) => {
+    if (!farmId) return;
+    try {
+      const res = await axios.post("https://dancan.alwaysdata.net/api/add_pasture", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      setPastures((prev) => [...prev, res.data]); // assuming API returns created pasture
+    } catch (err) {
+      console.error("Failed to add pasture", err);
+      throw err;
+    }
   }, [farmId]);
 
-  const deleteRotation = useCallback((id: string) => {
-    setAllRotations((prev) => prev.filter((r) => r.id !== id));
+  const deletePasture = useCallback(async (id: string) => {
+    try {
+      await axios.delete(`https://dancan.alwaysdata.net/api/delete_pasture/${id}`);
+      setPastures((prev) => prev.filter((p) => p.id !== id));
+    } catch (err) {
+      console.error("Failed to delete pasture", err);
+      throw err;
+    }
   }, []);
+
+  useEffect(() => {
+    fetchPastures();
+  }, [fetchPastures]);
 
   return (
-    <PastureContext.Provider value={{ pastures, rotations, addPasture, updatePasture, deletePasture, addRotation, deleteRotation }}>
+    <PastureContext.Provider value={{ pastures, loading, fetchPastures, addPasture, deletePasture }}>
       {children}
     </PastureContext.Provider>
   );

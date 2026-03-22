@@ -1,5 +1,8 @@
+"use client";
+
 import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
+
 import { useAuth } from "@/contexts/AuthContext";
 import { useHerd } from "@/contexts/HerdContext";
 import { useMilk } from "@/contexts/MilkContext";
@@ -8,12 +11,31 @@ import { useFinances } from "@/contexts/FinanceContext";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Legend } from "recharts";
-import { Bug as CowIcon, Milk, DollarSign, AlertTriangle, Plus, ArrowRight } from "lucide-react";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  Legend,
+} from "recharts";
+import {
+  Bug as CowIcon,
+  Milk,
+  DollarSign,
+  AlertTriangle,
+  Plus,
+  ArrowRight,
+} from "lucide-react";
 
 export default function Dashboard() {
   const navigate = useNavigate();
   const { currentFarm } = useAuth();
+
   const { animals, healthRecords, breedingEvents } = useHerd();
   const { records: milkRecords } = useMilk();
   const { movements } = useMovements();
@@ -24,7 +46,10 @@ export default function Dashboard() {
 
   // -------------------- STATS --------------------
   const todayMilk = useMemo(
-    () => milkRecords.filter((r) => r.date === today).reduce((sum, r) => sum + (r.yieldLiters || 0), 0),
+    () =>
+      milkRecords
+        .filter((r) => r.date === today)
+        .reduce((sum, r) => sum + (r.yieldLiters ?? 0), 0),
     [milkRecords, today]
   );
 
@@ -32,7 +57,7 @@ export default function Dashboard() {
     () =>
       financeRecords
         .filter((r) => r.type === "income" && r.date.startsWith(thisMonth))
-        .reduce((sum, r) => sum + (r.amount || 0), 0),
+        .reduce((sum, r) => sum + (r.amount ?? 0), 0),
     [financeRecords, thisMonth]
   );
 
@@ -40,15 +65,24 @@ export default function Dashboard() {
     () =>
       financeRecords
         .filter((r) => r.type === "expense" && r.date.startsWith(thisMonth))
-        .reduce((sum, r) => sum + (r.amount || 0), 0),
+        .reduce((sum, r) => sum + (r.amount ?? 0), 0),
     [financeRecords, thisMonth]
   );
 
-  const pendingCalving = breedingEvents.filter((b) => b.outcome === "pending").length;
+  const pendingCalving = useMemo(
+    () => breedingEvents.filter((b) => b.outcome === "pending").length,
+    [breedingEvents]
+  );
 
-  const recentMovements = movements.filter(
-    (m) => m.date >= new Date(Date.now() - 7 * 86400000).toISOString().split("T")[0]
-  ).length;
+  const recentMovements = useMemo(
+    () =>
+      movements.filter(
+        (m) =>
+          m.date >=
+          new Date(Date.now() - 7 * 86400000).toISOString().split("T")[0]
+      ).length,
+    [movements]
+  );
 
   // -------------------- TRENDS --------------------
   const milkTrend = useMemo(() => {
@@ -56,7 +90,7 @@ export default function Dashboard() {
     const cutoff = new Date(Date.now() - 14 * 86400000).toISOString().split("T")[0];
     milkRecords
       .filter((r) => r.date >= cutoff)
-      .forEach((r) => (map[r.date] = (map[r.date] || 0) + (r.yieldLiters || 0)));
+      .forEach((r) => (map[r.date] = (map[r.date] || 0) + (r.yieldLiters ?? 0)));
     return Object.entries(map)
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([date, total]) => ({ date: date.slice(5), total: Math.round(total * 10) / 10 }));
@@ -67,8 +101,8 @@ export default function Dashboard() {
     financeRecords.forEach((r) => {
       const m = r.date.slice(0, 7);
       if (!map[m]) map[m] = { month: m, income: 0, expense: 0 };
-      if (r.type === "income") map[m].income += r.amount || 0;
-      else map[m].expense += r.amount || 0;
+      if (r.type === "income") map[m].income += r.amount ?? 0;
+      else map[m].expense += r.amount ?? 0;
     });
     return Object.values(map)
       .sort((a, b) => a.month.localeCompare(b.month))
@@ -79,10 +113,20 @@ export default function Dashboard() {
   // -------------------- RECENT ACTIVITY --------------------
   const recentActivity = useMemo(() => {
     const items: { date: string; text: string }[] = [];
-    milkRecords.slice(-3).forEach((r) => items.push({ date: r.date, text: `Milk logged: ${r.yieldLiters}L` }));
-    movements.slice(-3).forEach((m) => items.push({ date: m.date, text: `Movement: ${m.type} — ${m.reason || "No reason"}` }));
-    financeRecords.slice(-3).forEach((f) => items.push({ date: f.date, text: `${f.type}: Kshs ${f.amount?.toFixed(2)} — ${f.description || ""}` }));
-    healthRecords.slice(-3).forEach((h) => items.push({ date: h.date, text: `Health: ${h.type.replace("_", " ")} — ${h.description || ""}` }));
+
+    milkRecords.slice(-3).forEach((r) =>
+      items.push({ date: r.date, text: `Milk logged: ${r.yieldLiters}L` })
+    );
+    movements.slice(-3).forEach((m) =>
+      items.push({ date: m.date, text: `Movement: ${m.type} — ${m.reason || "No reason"}` })
+    );
+    financeRecords.slice(-3).forEach((f) =>
+      items.push({ date: f.date, text: `${f.type}: Kshs ${f.amount?.toFixed(2)} — ${f.description || ""}` })
+    );
+    healthRecords.slice(-3).forEach((h) =>
+      items.push({ date: h.date, text: `Health: ${h.type.replace("_", " ")} — ${h.description || ""}` })
+    );
+
     return items.sort((a, b) => b.date.localeCompare(a.date)).slice(0, 8);
   }, [milkRecords, movements, financeRecords, healthRecords]);
 

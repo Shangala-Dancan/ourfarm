@@ -1,4 +1,11 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+} from "react";
+import axios from "axios";
 import { useAuth } from "./AuthContext";
 
 export interface MilkRecord {
@@ -8,42 +15,89 @@ export interface MilkRecord {
   date: string;
   session: "morning" | "evening";
   yieldLiters: number;
-  butterfatPercent: number;
-  temperature: number;
-  qualityNotes: string;
+  butterfatPercent?: number;
+  temperature?: number;
+  qualityNotes?: string;
 }
 
 interface MilkContextType {
   records: MilkRecord[];
-  addRecord: (data: Omit<MilkRecord, "id" | "farmId">) => void;
-  deleteRecord: (id: string) => void;
+  fetchRecords: () => Promise<void>;
+  addRecord: (data: Omit<MilkRecord, "id" | "farmId">) => Promise<void>;
+  deleteRecord: (id: string) => Promise<void>;
 }
 
 const MilkContext = createContext<MilkContextType | null>(null);
-const MILK_KEY = "lms_milk_records";
-
-function getStored<T>(key: string, fallback: T): T {
-  try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : fallback; } catch { return fallback; }
-}
 
 export function MilkProvider({ children }: { children: React.ReactNode }) {
   const { currentFarm } = useAuth();
-  const farmId = currentFarm?.id || "";
-  const [allRecords, setAllRecords] = useState<MilkRecord[]>(() => getStored(MILK_KEY, []));
+  const farmId = currentFarm?.id;
+  const [records, setRecords] = useState<MilkRecord[]>([]);
 
-  useEffect(() => { localStorage.setItem(MILK_KEY, JSON.stringify(allRecords)); }, [allRecords]);
-
-  const records = allRecords.filter((r) => r.farmId === farmId);
-
-  const addRecord = useCallback((data: Omit<MilkRecord, "id" | "farmId">) => {
-    setAllRecords((prev) => [...prev, { ...data, id: crypto.randomUUID(), farmId }]);
+  // -------------------- FETCH RECORDS --------------------
+  const fetchRecords = useCallback(async () => {
+    if (!farmId) return;
+    try {
+      const res = await axios.get("https://dancan.alwaysdata.net/api/get_milk", {
+        params: { farmId },
+      });
+      const normalized: MilkRecord[] = res.data.map((r: any) => ({
+        ...r,
+        id: String(r.id),
+        animalId: String(r.animalId),
+        farmId: String(r.farmId),
+        yieldLiters: Number(r.yieldLiters || 0),
+      }));
+      setRecords(normalized);
+    } catch (err) {
+      console.error("Failed to fetch milk records:", err);
+    }
   }, [farmId]);
 
-  const deleteRecord = useCallback((id: string) => {
-    setAllRecords((prev) => prev.filter((r) => r.id !== id));
-  }, []);
+  // Fetch when farmId changes
+  useEffect(() => {
+    fetchRecords();
+  }, [fetchRecords]);
 
-  return <MilkContext.Provider value={{ records, addRecord, deleteRecord }}>{children}</MilkContext.Provider>;
+  // -------------------- ADD RECORD --------------------
+  const addRecord = useCallback(
+    async (data: Omit<MilkRecord, "id" | "farmId">) => {
+      if (!farmId) return;
+      try {
+        const formData = new FormData();
+        formData.append("animalId", data.animalId);
+        formData.append("date", data.date);
+        formData.append("session", data.session);
+        formData.append("yieldLiters", String(data.yieldLiters));
+        await axios.post("https://dancan.alwaysdata.net/api/add_milk", formData);
+        await fetchRecords(); // Refresh after adding
+      } catch (err) {
+        console.error("Failed to add milk record:", err);
+        throw err;
+      }
+    },
+    [farmId, fetchRecords]
+  );
+
+  // -------------------- DELETE RECORD --------------------
+  const deleteRecord = useCallback(
+    async (id: string) => {
+      try {
+        await axios.delete(`https://dancan.alwaysdata.net/api/delete_milk/${id}`);
+        setRecords((prev) => prev.filter((r) => r.id !== id));
+      } catch (err) {
+        console.error("Failed to delete milk record:", err);
+        throw err;
+      }
+    },
+    []
+  );
+
+  return (
+    <MilkContext.Provider value={{ records, fetchRecords, addRecord, deleteRecord }}>
+      {children}
+    </MilkContext.Provider>
+  );
 }
 
 export function useMilk() {

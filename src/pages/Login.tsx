@@ -21,16 +21,16 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-  const { login } = useAuth(); // ✅ Use login from AuthContext
+  const { login } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
     try {
-      await login(email, password); // ⚡ Call AuthContext login, handles API + localStorage
+      await login(email, password);
       toast.success("Login successful!");
-      navigate("/", { replace: true }); // Redirect to dashboard
+      navigate("/", { replace: true });
     } catch (err: any) {
       toast.error(err.message || "Login failed");
     } finally {
@@ -62,6 +62,7 @@ export default function Login() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
+                disabled={loading} // disable while loading
               />
             </div>
 
@@ -74,6 +75,7 @@ export default function Login() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
+                disabled={loading} // disable while loading
               />
             </div>
           </CardContent>

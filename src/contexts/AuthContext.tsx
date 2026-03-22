@@ -1,5 +1,5 @@
 // src/contexts/AuthContext.tsx
-import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from "react";
 import axios from "axios";
 
 export type UserRole = "owner" | "manager" | "worker";
@@ -34,6 +34,9 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
+
+const USER_KEY = "user";
+const TOKEN_KEY = "token";
 const FARMS_KEY = "lms_farms";
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -41,121 +44,189 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [farms, setFarms] = useState<Farm[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Load user + farms from localStorage
+  // -------------------- Load from localStorage on mount --------------------
   useEffect(() => {
-    const storedUser = localStorage.getItem("user");
+    const token = localStorage.getItem(TOKEN_KEY);
+    const storedUser = localStorage.getItem(USER_KEY);
     const storedFarms = localStorage.getItem(FARMS_KEY);
-    if (storedUser) setUser(JSON.parse(storedUser));
+
+    if (token) {
+      (async () => {
+        try {
+          // Fetch latest user from backend
+          const res = await axios.get("https://dancan.alwaysdata.net/api/me", {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          const freshUser: User = { ...res.data, token };
+          setUser(freshUser);
+          localStorage.setItem(USER_KEY, JSON.stringify(freshUser));
+        } catch {
+          logout(); // token invalid, logout
+        } finally {
+          setIsLoading(false);
+        }
+      })();
+    } else {
+      if (storedUser) setUser(JSON.parse(storedUser));
+      setIsLoading(false);
+    }
+
     if (storedFarms) setFarms(JSON.parse(storedFarms));
-    setIsLoading(false);
   }, []);
 
-  // Login with external API
+  // -------------------- Login --------------------
   const login = useCallback(async (email: string, password: string) => {
     try {
       const formData = new FormData();
       formData.append("email", email);
       formData.append("password", password);
 
+      // Sign in
       const res = await axios.post("https://dancan.alwaysdata.net/api/signin", formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
 
-      const { user: apiUser, token } = res.data;
+      const { token } = res.data;
 
-      const loggedInUser: User = { ...apiUser, token };
-      setUser(loggedInUser);
-      localStorage.setItem("user", JSON.stringify(loggedInUser));
-      localStorage.setItem("token", token);
+      // Fetch full user
+      const userRes = await axios.get("https://dancan.alwaysdata.net/api/me", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const fullUser: User = { ...userRes.data, token };
 
-      // Optional: fetch farms from API if available
+      setUser(fullUser);
+      localStorage.setItem(USER_KEY, JSON.stringify(fullUser));
+      localStorage.setItem(TOKEN_KEY, token);
+
+      // Fetch farms
       try {
         const farmsRes = await axios.get("https://dancan.alwaysdata.net/api/farms", {
           headers: { Authorization: `Bearer ${token}` },
         });
-        setFarms(farmsRes.data || []);
-        localStorage.setItem(FARMS_KEY, JSON.stringify(farmsRes.data || []));
+        const fetchedFarms: Farm[] = farmsRes.data || [];
+        setFarms(fetchedFarms);
+        localStorage.setItem(FARMS_KEY, JSON.stringify(fetchedFarms));
       } catch {
-        // Ignore farm fetch errors
         setFarms([]);
       }
     } catch (err: any) {
-      throw new Error(err.response?.data?.message || err.message || "Login failed");
+      const message = err.response?.data?.message || err.message || "Login failed";
+      throw new Error(message);
     }
   }, []);
 
-  // Signup with external API
-  const signup = useCallback(async (email: string, password: string, name: string, role: UserRole) => {
-    try {
-      const res = await axios.post("https://dancan.alwaysdata.net/api/signup", {
-        email,
-        password,
-        name,
-        role,
-      });
+  // -------------------- Signup --------------------
+  const signup = useCallback(
+    async (email: string, password: string, name: string, role: UserRole) => {
+      try {
+        const res = await axios.post("https://dancan.alwaysdata.net/api/signup", {
+          email,
+          password,
+          name,
+          role,
+        });
 
-      const { user: apiUser, token } = res.data;
-      const newUser: User = { ...apiUser, token };
-      setUser(newUser);
-      localStorage.setItem("user", JSON.stringify(newUser));
-      localStorage.setItem("token", token);
-      setFarms([]); // No farms yet for new signup
-    } catch (err: any) {
-      throw new Error(err.response?.data?.message || err.message || "Signup failed");
-    }
-  }, []);
+        const { token } = res.data;
 
-  // Logout user
+        // Fetch full user after signup
+        const userRes = await axios.get("https://dancan.alwaysdata.net/api/me", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const newUser: User = { ...userRes.data, token };
+
+        setUser(newUser);
+        localStorage.setItem(USER_KEY, JSON.stringify(newUser));
+        localStorage.setItem(TOKEN_KEY, token);
+
+        setFarms([]);
+        localStorage.removeItem(FARMS_KEY);
+      } catch (err: any) {
+        const message = err.response?.data?.message || err.message || "Signup failed";
+        throw new Error(message);
+      }
+    },
+    []
+  );
+
+  // -------------------- Logout --------------------
   const logout = useCallback(() => {
     setUser(null);
     setFarms([]);
-    localStorage.removeItem("user");
-    localStorage.removeItem("token");
+    localStorage.removeItem(USER_KEY);
+    localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(FARMS_KEY);
   }, []);
 
-  // Set current farm
+  // -------------------- Set Current Farm --------------------
   const setCurrentFarm = useCallback(
     (farmId: string) => {
       if (!user) return;
-      const updated = { ...user, currentFarmId: farmId };
-      setUser(updated);
-      localStorage.setItem("user", JSON.stringify(updated));
+      const updatedUser = { ...user, currentFarmId: farmId };
+      setUser(updatedUser);
+      localStorage.setItem(USER_KEY, JSON.stringify(updatedUser));
     },
     [user]
   );
 
-  // Add farm via API
+  // -------------------- Add Farm --------------------
   const addFarm = useCallback(
     async (name: string, location: string): Promise<Farm> => {
       if (!user) throw new Error("Not authenticated");
 
-      const token = user.token;
       const res = await axios.post(
         "https://dancan.alwaysdata.net/api/farms",
         { name, location },
-        { headers: { Authorization: `Bearer ${token}` } }
+        { headers: { Authorization: `Bearer ${user.token}` } }
       );
 
       const newFarm: Farm = res.data;
-      setFarms((prev) => [...prev, newFarm]);
-      localStorage.setItem(FARMS_KEY, JSON.stringify([...farms, newFarm]));
+      setFarms((prev) => {
+        const updated = [...prev, newFarm];
+        localStorage.setItem(FARMS_KEY, JSON.stringify(updated));
+        return updated;
+      });
+
       return newFarm;
     },
-    [user, farms]
+    [user]
   );
 
-  const currentFarm = farms.find((f) => f.id === user?.currentFarmId) || farms[0] || null;
+  // -------------------- Current Farm --------------------
+  const currentFarm = useMemo(() => {
+    if (!user) return null;
+
+    // Try to find farm by currentFarmId
+    let farm = farms.find((f) => f.id === user.currentFarmId);
+
+    // If none selected, default to first farm
+    if (!farm && farms.length > 0) {
+      farm = farms[0];
+      setCurrentFarm(farm.id); // persist choice
+    }
+
+    return farm || null;
+  }, [farms, user, setCurrentFarm]);
 
   return (
     <AuthContext.Provider
-      value={{ user, farms, currentFarm, isLoading, login, signup, logout, setCurrentFarm, addFarm }}
+      value={{
+        user,
+        farms,
+        currentFarm,
+        isLoading,
+        login,
+        signup,
+        logout,
+        setCurrentFarm,
+        addFarm,
+      }}
     >
       {children}
     </AuthContext.Provider>
   );
 }
 
+// -------------------- Hook --------------------
 export function useAuth() {
   const context = useContext(AuthContext);
   if (!context) throw new Error("useAuth must be used within AuthProvider");

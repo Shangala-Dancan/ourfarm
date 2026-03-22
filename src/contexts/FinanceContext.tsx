@@ -1,4 +1,7 @@
+"use client";
+
 import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
+import axios from "axios";
 import { useAuth } from "./AuthContext";
 
 export type FinanceCategory =
@@ -15,40 +18,86 @@ export interface FinanceRecord {
   amount: number;
   date: string;
   description: string;
-  notes: string;
+  notes?: string;
 }
 
 interface FinanceContextType {
   records: FinanceRecord[];
-  addRecord: (data: Omit<FinanceRecord, "id" | "farmId">) => void;
-  deleteRecord: (id: string) => void;
+  loading: boolean;
+  fetchRecords: () => Promise<void>;
+  addRecord: (data: Omit<FinanceRecord, "id" | "farmId">) => Promise<void>;
+  deleteRecord: (id: string) => Promise<void>;
 }
 
 const FinanceContext = createContext<FinanceContextType | null>(null);
-const FINANCE_KEY = "lms_finance_records";
-
-function getStored<T>(key: string, fb: T): T {
-  try { const r = localStorage.getItem(key); return r ? JSON.parse(r) : fb; } catch { return fb; }
-}
 
 export function FinanceProvider({ children }: { children: React.ReactNode }) {
   const { currentFarm } = useAuth();
-  const farmId = currentFarm?.id || "";
-  const [allRecords, setAllRecords] = useState<FinanceRecord[]>(() => getStored(FINANCE_KEY, []));
+  const farmId = currentFarm?.id;
+  const [records, setRecords] = useState<FinanceRecord[]>([]);
+  const [loading, setLoading] = useState(false);
 
-  useEffect(() => { localStorage.setItem(FINANCE_KEY, JSON.stringify(allRecords)); }, [allRecords]);
-
-  const records = allRecords.filter((r) => r.farmId === farmId);
-
-  const addRecord = useCallback((data: Omit<FinanceRecord, "id" | "farmId">) => {
-    setAllRecords((prev) => [...prev, { ...data, id: crypto.randomUUID(), farmId }]);
+  const fetchRecords = useCallback(async () => {
+    if (!farmId) return;
+    setLoading(true);
+    try {
+      const res = await axios.get("https://dancan.alwaysdata.net/api/get_finance", {
+        params: { farmId },
+      });
+      setRecords(res.data);
+    } catch (err) {
+      console.error("Failed to fetch finance records:", err);
+    } finally {
+      setLoading(false);
+    }
   }, [farmId]);
 
-  const deleteRecord = useCallback((id: string) => {
-    setAllRecords((prev) => prev.filter((r) => r.id !== id));
+  const addRecord = useCallback(
+    async (data: Omit<FinanceRecord, "id" | "farmId">) => {
+      if (!farmId) return;
+      try {
+        const formData = new FormData();
+        formData.append("farmId", farmId);
+        formData.append("type", data.type);
+        formData.append("category", data.category);
+        formData.append("amount", data.amount.toString());
+        formData.append("date", data.date);
+        formData.append("description", data.description);
+        formData.append("notes", data.notes || "");
+
+        const res = await axios.post("https://dancan.alwaysdata.net/api/add_finance", formData, {
+          headers: { "Content-Type": "multipart/form-data" },
+        });
+
+        // Add record locally
+        setRecords((prev) => [...prev, { ...data, id: res.data.id, farmId }]);
+      } catch (err) {
+        console.error("Failed to add finance record:", err);
+        throw err;
+      }
+    },
+    [farmId]
+  );
+
+  const deleteRecord = useCallback(async (id: string) => {
+    try {
+      await axios.delete(`https://dancan.alwaysdata.net/api/finance/${id}`);
+      setRecords((prev) => prev.filter((r) => r.id !== id));
+    } catch (err) {
+      console.error("Failed to delete finance record:", err);
+      throw err;
+    }
   }, []);
 
-  return <FinanceContext.Provider value={{ records, addRecord, deleteRecord }}>{children}</FinanceContext.Provider>;
+  useEffect(() => {
+    if (farmId) fetchRecords();
+  }, [farmId, fetchRecords]);
+
+  return (
+    <FinanceContext.Provider value={{ records, loading, fetchRecords, addRecord, deleteRecord }}>
+      {children}
+    </FinanceContext.Provider>
+  );
 }
 
 export function useFinances() {
